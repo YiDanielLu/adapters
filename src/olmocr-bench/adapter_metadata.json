@@ -1,0 +1,30 @@
+[
+  {
+    "adapter_name": "olmocr-bench",
+    "adapter_builders": ["Yi Lu (81632945+YiDanielLu@users.noreply.github.com)"],
+    "original_benchmark": [
+      {
+        "split": "full",
+        "size": 1403,
+        "harness": "llm",
+        "supported_agents": ["None"],
+        "adaptable": true,
+        "notes": "1,403 single-page PDFs with 7,019 unit tests in 7 JSONL files (plus one auto-added baseline test per page). Upstream runs OCR pipelines / VLM APIs per page via olmocr.bench.convert and scores with olmocr.bench.benchmark."
+      }
+    ],
+    "harbor_adapter": [
+      {
+        "split": "full",
+        "adapted_benchmark_size": 1403,
+        "parity_benchmark_size": null,
+        "parity_sampling_rate": null,
+        "registry_benchmark_size": 1403,
+        "added_agents": ["None"],
+        "parity_matching_agents": [],
+        "parity_unmatching_agents": ["None"],
+        "parity_costs": null,
+        "notes": "One task per PDF page. Grading uses the unmodified upstream olmocr test code (pinned commit f7cfe4c2). Official score = mean of per-JSONL pass rates, recomputed with olmocr-bench-aggregate. Parity plan pending team confirmation."
+      }
+    ]
+  }
+]

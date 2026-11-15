@@ -1,0 +1,38 @@
+version = "1.0"
+
+[task]
+name = "{task_name}"
+description = "olmOCR-Bench: transcribe one PDF page ({category}) to Markdown; graded by {n_tests} upstream olmOCR unit tests."
+authors = [
+    { name = "Jake Poznanski" },
+    { name = "Jon Borchardt" },
+    { name = "Jason Dunkelberger" },
+    { name = "Regan Huff" },
+    { name = "Daniel Lin" },
+    { name = "Aman Rangapur" },
+    { name = "Christopher Wilhelm" },
+    { name = "Kyle Lo" },
+    { name = "Luca Soldaini" },
+]
+keywords = ["ocr", "pdf", "document-understanding", "markdown", "{category}"]
+
+[metadata]
+benchmark = "olmocr-bench"
+difficulty = "medium"
+category = "document-ocr"
+olmocr_category = "{category}"
+source_pdf = "{source_pdf}"
+source_jsonl = {source_jsonl}
+test_types = {test_types}
+
+[verifier]
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 1200.0
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240
