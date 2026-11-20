@@ -1,4 +1,6 @@
 version = "1.0"
+# The only thing the separate verifier receives from the agent.
+artifacts = ["/workspace/output.md"]
 
 [task]
 name = "{task_name}"
@@ -27,6 +29,8 @@ test_types = {test_types}
 
 [verifier]
 timeout_sec = 600.0
+# Grade in a fresh container built from tests/Dockerfile (grader + this page's tests).
+environment_mode = "separate"
 
 [agent]
 timeout_sec = 1800.0

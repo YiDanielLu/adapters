@@ -38,9 +38,12 @@ confidence interval.
 
 - **Pinned, automatic data download** of `allenai/olmOCR-bench` (Hugging Face revision
   `54a96a6f…`) via `huggingface_hub`, or `--data-dir` for a local copy.
-- **One task per page**: the PDF is baked into the image at `/workspace/input.pdf`; the page's tests are
-  only uploaded at verification time (`tests/tests.jsonl`), so agents never see them.
-- **Upstream grader, unmodified**: the task image installs `olmocr` with `--no-deps` from the pinned
+- **One task per page**: the PDF is baked into the agent image at `/workspace/input.pdf`.
+- **Separate verifier**: grading runs in its own container (`[verifier] environment_mode = "separate"`),
+  built from `tests/Dockerfile`, which holds the grader and the page's tests (`tests/tests.jsonl`). The
+  agent never sees the tests, and the only file passed from the agent to the verifier is the declared
+  artifact `/workspace/output.md`.
+- **Upstream grader, unmodified**: the verifier image installs `olmocr` with `--no-deps` from the pinned
   upstream commit `f7cfe4c2` plus the `olmocr[bench]` libraries the tests import (rapidfuzz,
   fuzzysearch, beautifulsoup4, lxml, playwright + Chromium for KaTeX math rendering).
   `tests/run_olmocr_tests.py` mirrors `benchmark.py`'s per-test loop for one page and one repeat,
@@ -52,7 +55,8 @@ confidence interval.
 - **Oracle**: olmOCR-Bench has no gold transcriptions, so `solution/reference.md` is built from each
   page's tests (`oracle.py`): present texts verbatim, order snippets emitted twice, exact LaTeX in
   display delimiters, and one small HTML table per table test.
-- Docker layers are shared by all tasks (only the final `COPY input.pdf` differs).
+- Docker layers are shared by all tasks: only the final `COPY input.pdf` (agent image) and `COPY . /tests/`
+  (verifier image) differ.
 
 ## Generated Task Structure
 
@@ -62,12 +66,13 @@ olmocr-bench/
 │   ├── task.toml                 # name allenai/olmocr-bench__{task_id}, source PDF/test files in [metadata]
 │   ├── instruction.md            # olmOCR transcription prompt + I/O paths
 │   ├── environment/
-│   │   ├── Dockerfile            # python:3.11 + pinned olmocr grader + Chromium
+│   │   ├── Dockerfile            # agent image: python:3.11 + the page
 │   │   └── input.pdf             # the page to transcribe
 │   ├── solution/
 │   │   ├── solve.sh              # copies reference.md to /workspace/output.md
 │   │   └── reference.md          # reference transcription built from the tests
 │   └── tests/
+│       ├── Dockerfile            # verifier image: pinned olmocr grader + Chromium + these tests
 │       ├── test.sh               # runs the grader, always rewrites reward.json
 │       ├── run_olmocr_tests.py   # single-page port of benchmark.py's evaluation loop
 │       ├── tests.jsonl           # this page's upstream tests, verbatim
@@ -93,7 +98,7 @@ src/olmocr-bench/
         ├── task.toml
         ├── instruction.md
         ├── environment/Dockerfile
-        └── tests/{test.sh, run_olmocr_tests.py}
+        └── tests/{Dockerfile, test.sh, run_olmocr_tests.py}
 ```
 
 ## Run Evaluation / Harness
@@ -190,8 +195,8 @@ number comparable to the original benchmark is the `olmocr-bench-aggregate` over
   those pages.
 - **Absent tests on empty output:** as upstream, an empty `output.md` still passes `absent` tests
   (only the baseline fails), so empty answers get partial credit on header/footer pages.
-- **Math tests** need headless Chromium (KaTeX rendering); it is installed in the task image. Every
-  task image is about 1 GB, but the layers are shared across tasks. Under load, Chromium
+- **Math tests** need headless Chromium (KaTeX rendering); it is installed in the verifier image only.
+  Each verifier image is about 1 GB, but the layers are shared across tasks. Under load, Chromium
   occasionally crashes on launch (4 of 1,403 pages in our first full oracle run). Upstream
   `benchmark.py` would abort on that; the Harbor grader relaunches the renderer and retries (up to 3
   times, Playwright errors only), so a browser crash never becomes a 0 score.
