@@ -43,13 +43,17 @@ The benchmark score is the mean over items (`Average BLEU score` printed by `eva
 
 - **Pinned data**: `dataset/test.jsonl` is downloaded from upstream commit `86df98bf` (or pass
   `--data-file`).
-- **Upstream scorer, unmodified**: the task image fetches `evaluate/SecureBleu.py` from the same pinned
+- **Separate verifier**: grading runs in its own container (`[verifier] environment_mode = "separate"`),
+  built from `tests/Dockerfile`. The agent image holds only `patch.diff`; the only file passed from the
+  agent to the verifier is the declared artifact `/workspace/review.txt`.
+- **Upstream scorer, unmodified**: the verifier image fetches `evaluate/SecureBleu.py` from the same pinned
   commit. `tests/grade.py` parses the review with the upstream `parse_security_review` (copied verbatim
   from `infer/test.py`), writes a one-line `result.jsonl` and executes `SecureBleu.py` on it.
 - **Reward**: `reward = SecureBLEU / 100` for the item, so **Harbor's mean reward × 100 is the upstream
   benchmark score** (every item is weighted equally upstream too). `/logs/verifier/details.json` also holds
   the parsed review, the type match and the scorer's log.
-- **Hidden reference**: the reference review is only uploaded at verification time (`tests/reference.json`).
+- **Hidden reference**: the reference review exists only in the verifier image (`tests/reference.json`),
+  never in the agent's container.
 - **Oracle**: writes the expert-refined reference comment (`solution/review.txt`).
 
 ## Generated Task Structure
@@ -60,12 +64,13 @@ securereviewer/
 │   ├── task.toml                 # name securereviewer/securereviewer__test-{index}; source index + type in [metadata]
 │   ├── instruction.md            # upstream review prompt + the diff + output format
 │   ├── environment/
-│   │   ├── Dockerfile            # python:3.11 + nltk 3.9.1 (+ WordNet, POS tagger) + pinned SecureBleu.py
+│   │   ├── Dockerfile            # agent image: python:3.11 + the diff
 │   │   └── patch.diff            # the code change
 │   ├── solution/
 │   │   ├── solve.sh              # copies review.txt to /workspace/review.txt
 │   │   └── review.txt            # reference review comment
 │   └── tests/
+│       ├── Dockerfile            # verifier image: nltk 3.9.1 (+ WordNet, POS tagger) + pinned SecureBleu.py + tests
 │       ├── test.sh               # runs grade.py, always rewrites reward.json
 │       ├── grade.py              # parse review + run upstream SecureBleu.py on this item
 │       └── reference.json        # reference fields for this item
@@ -89,7 +94,7 @@ src/securereviewer/
         ├── instruction.md
         ├── environment/Dockerfile
         ├── solution/solve.sh
-        └── tests/{test.sh, grade.py}
+        └── tests/{Dockerfile, test.sh, grade.py}
 ```
 
 ## Run Evaluation / Harness

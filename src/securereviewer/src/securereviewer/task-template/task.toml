@@ -1,4 +1,6 @@
 version = "1.0"
+# The only thing the separate verifier receives from the agent.
+artifacts = ["/workspace/review.txt"]
 
 [task]
 name = "{task_name}"
@@ -22,6 +24,8 @@ security_type = "{security_type}"
 
 [verifier]
 timeout_sec = 300.0
+# Grade in a fresh container built from tests/Dockerfile (scorer + this item's reference).
+environment_mode = "separate"
 
 [agent]
 timeout_sec = 900.0
