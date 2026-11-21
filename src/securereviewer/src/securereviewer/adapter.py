@@ -128,6 +128,7 @@ class SecureReviewerAdapter:
             .replace("{source_index}", str(idx))
             .replace("{security_type}", item["security_type"]),
             encoding="utf-8",
+            newline="\n",
         )
 
         instr_path = task_dir / "instruction.md"
@@ -141,7 +142,7 @@ class SecureReviewerAdapter:
 
         # Reference review: only uploaded at verification time.
         reference = {k: item[k] for k in ("patch", "security_type", "description", "impact", "advice", "comment")}
-        (task_dir / "tests" / "reference.json").write_text(json.dumps(reference, indent=2, ensure_ascii=False), encoding="utf-8")
+        (task_dir / "tests" / "reference.json").write_text(json.dumps(reference, indent=2, ensure_ascii=False), encoding="utf-8", newline="\n")
 
         # Oracle: the expert-refined reference comment, in the review format the parser expects.
         (task_dir / "solution" / "review.txt").write_text(item["comment"], encoding="utf-8", newline="\n")
