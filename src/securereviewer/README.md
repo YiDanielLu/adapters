@@ -59,7 +59,8 @@ The benchmark score is the mean over items (`Average BLEU score` printed by `eva
   type in proportion to its size, sampled with seed 42.
 - **Parity agent** (`parity/securereviewer_parity_agent.py`, `securereviewer-single-call@1.0.0`): sends the
   task instruction to the model in one Anthropic Messages API call (temperature 0, matching upstream's
-  greedy decoding; `max_tokens` 2000, matching upstream's 2,000-token budget) and writes the reply
+  greedy decoding; `max_tokens` 2000 for the reply, where upstream caps prompt plus reply at 2,000 tokens
+  with `max_length`) and writes the reply
   verbatim to `/workspace/review.txt`. The API call lives in `parity/single_call.py`, which the
   original-side runner uses byte for byte. The endpoint and key come from `ANTHROPIC_BASE_URL` and
   `ANTHROPIC_API_KEY`.
@@ -93,6 +94,7 @@ src/securereviewer/
 ├── parity_experiment.json
 ├── pyproject.toml
 ├── run_securereviewer.yaml
+├── run_securereviewer_parity.yaml       # Harbor-side parity job config
 ├── parity/
 │   ├── securereviewer_parity_agent.py   # Harbor-side single-call agent
 │   └── single_call.py                   # API call shared with the original-side runner
@@ -178,6 +180,9 @@ overlap. The API cost for all four runs was about $0.30.
 - Parity results (Hugging Face): [harborframework/parity-experiments#287](https://huggingface.co/datasets/harborframework/parity-experiments/discussions/287). The PR has no files yet because that dataset is over the Hub's file limit, so the full bundle is mirrored at [Daniellu88/securereviewer-parity-experiments](https://huggingface.co/datasets/Daniellu88/securereviewer-parity-experiments/tree/ce88c43725ff2da24920be8dc281e8923c3e497f/adapters/securereviewer)
 
 Reproduction. Put `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and `DAYTONA_API_KEY` in a `.env` file.
+The Harbor side ran on Harbor 0.26.0 with its Daytona extra. It used Daytona SDK 0.233.0, because SDK
+2.x doesn't work with Harbor 0.26.0: `uv tool install 'harbor[daytona]==0.26.0' --with 'daytona<2'`.
+`run_securereviewer_parity.yaml` has the same Harbor-side settings as a job config.
 
 ```bash
 # Original side: the parity fork (upstream 86df98bf + infer/test_api.py)
@@ -216,8 +221,8 @@ done
   `State Management`), so only the common keywords count for those 46 items. This is upstream behaviour
   and is kept.
 - **Parity runner (new code).** Upstream's `infer/test.py` only runs its fine-tuned local models, so the
-  parity fork adds `infer/test_api.py`. It reuses upstream's prompt, `parse_security_review` and
-  field mapping, and calls an API model instead of `model.generate`.
+  parity fork adds `infer/test_api.py`. It reuses upstream's review prompt text, `parse_security_review`
+  and field mapping, and calls an API model instead of `model.generate`.
 - **Parity prompt.** The parity prompt is the task instruction: upstream's review prompt, the raw
   unified diff in a fenced block (upstream feeds its models a `<add>/<del>/<keep>` encoding), and an
   output-format section listing the 7 types and the `Security type:/Description:/Impact:/Advice:`
@@ -226,6 +231,14 @@ done
 - **Parity model.** `claude-haiku-4-5` was used because `claude-haiku-5-5` rejects the `temperature`
   parameter. Even at temperature 0, API outputs vary slightly from run to run, which is the spread seen
   in the parity runs.
+- **Model ID is an alias.** The guide asks for an exact dated model ID, but the 2077ai endpoint only
+  serves the alias. It rejects `claude-haiku-4-5-20251001` with `model_not_found`, and every response
+  in both parity runs reports `model: claude-haiku-4-5`. Both sides used the same alias.
+- **Run order.** After a one-task sanity check on each side, both original-side runs were done before
+  both Harbor-side runs, rather than alternating sides as the guide suggests. Each side's settings were
+  fixed before any run, and nothing changed between runs.
+- **Harbor version.** Parity and oracle runs used Harbor 0.26.0. Daytona SDK 0.233.0 was pinned
+  because SDK 2.x isn't compatible with that Harbor version.
 - **nltk version**: upstream does not pin nltk; the image uses nltk 3.9.1 with the `wordnet`, `omw-1.4` and
   `averaged_perceptron_tagger_eng` data.
 
