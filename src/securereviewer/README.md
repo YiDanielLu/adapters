@@ -55,6 +55,14 @@ The benchmark score is the mean over items (`Average BLEU score` printed by `eva
 - **Hidden reference**: the reference review exists only in the verifier image (`tests/reference.json`),
   never in the agent's container.
 - **Oracle**: writes the expert-refined reference comment (`solution/review.txt`).
+- **Parity subset**: `--split parity` generates a fixed 25-task subset (about 10%), stratified by security
+  type in proportion to its size, sampled with seed 42.
+- **Parity agent** (`parity/securereviewer_parity_agent.py`, `securereviewer-single-call@1.0.0`): sends the
+  task instruction to the model in one Anthropic Messages API call (temperature 0, matching upstream's
+  greedy decoding; `max_tokens` 2000, matching upstream's 2,000-token budget) and writes the reply
+  verbatim to `/workspace/review.txt`. The API call lives in `parity/single_call.py`, which the
+  original-side runner uses byte for byte. The endpoint and key come from `ANTHROPIC_BASE_URL` and
+  `ANTHROPIC_API_KEY`.
 
 ## Generated Task Structure
 
@@ -85,6 +93,9 @@ src/securereviewer/
 ├── parity_experiment.json
 ├── pyproject.toml
 ├── run_securereviewer.yaml
+├── parity/
+│   ├── securereviewer_parity_agent.py   # Harbor-side single-call agent
+│   └── single_call.py                   # API call shared with the original-side runner
 └── src/securereviewer/
     ├── __init__.py
     ├── adapter.py        # download + task generation
@@ -144,28 +155,47 @@ Flags:
 - `--overwrite` — replace existing task directories
 - `--task-ids ID [ID ...]` — only these task ids (e.g. `test-000`)
 - `--data-file PATH` — use a local copy of `dataset/test.jsonl` instead of downloading the pinned one
+- `--split {full,parity}` — `full` (default): all 261 tasks; `parity`: the 25-task parity subset
 
 ## Comparison with Original Benchmark (Parity)
 
-_Parity experiments have not been run yet; the plan (agents, models, runs) is being agreed with the
-Harbor team._ Results will be reported as mean ± sample SEM of the SecureBLEU score over ≥2 runs per side.
+Scores are SecureBLEU (0–100, mean over items), reported as mean ± sample SEM over 2 runs per side.
+Both sides send the same prompt to the same model with the same settings in one API call per item.
+The only difference is where the review is graded: upstream `evaluate/SecureBleu.py` on a
+`result.jsonl`, versus the Harbor task's separate verifier.
 
 | Agent | Model | Metric | Number of Runs | Dataset Size | Original Benchmark Performance | Harbor Adapter Performance |
 |-------|-------|--------|------------------|--------------|------------------------------|----------------------------|
-| TBD | TBD | SecureBLEU (mean over items) | TBD | 261 (100% of scored items) | TBD | TBD |
+| securereviewer-single-call@1.0.0 | claude-haiku-4-5 | SecureBLEU | 2 | 25 of 261 (9.6%) | 26.1055 ± 0.1446 | 26.3495 ± 0.1436 |
 
-Reproduction (the agent/runner settings will be filled in once the parity plan is agreed):
+The runs are original 25.96 and 26.25, and Harbor 26.21 and 26.49 (0 exceptions), so the run ranges
+overlap. The API cost for all four runs was about $0.30.
+
+- Original benchmark: [SIMIAO515/SecureReviewer](https://github.com/SIMIAO515/SecureReviewer) (commit `86df98bf`)
+- Parity fork with the API runner: [YiDanielLu/SecureReviewer@harbor-parity](https://github.com/YiDanielLu/SecureReviewer/tree/harbor-parity)
+- Adapter PR: [harbor-framework/adapters#97](https://github.com/harbor-framework/adapters/pull/97)
+- Dataset PR: _pending_
+- Parity results (Hugging Face): _pending_
+
+Reproduction. Put `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and `DAYTONA_API_KEY` in a `.env` file.
 
 ```bash
-# Original side: SIMIAO515/SecureReviewer at commit 86df98bf8e0a4057cb4d89490cde400359af290d
-git clone https://github.com/SIMIAO515/SecureReviewer && cd SecureReviewer && git checkout 86df98bf8e0a4057cb4d89490cde400359af290d
-# Generate predictions for dataset/test.jsonl into evaluate/result.jsonl
-# (fields "Security Type", "Description", "Impact", "Advice"; see infer/test.py)
-cd evaluate && python SecureBleu.py
+# Original side: the parity fork (upstream 86df98bf + infer/test_api.py)
+git clone -b harbor-parity https://github.com/YiDanielLu/SecureReviewer && cd SecureReviewer
+set -a; . /path/to/.env; set +a
+pip install nltk==3.9.1 && python -m nltk.downloader wordnet omw-1.4 averaged_perceptron_tagger_eng
+for r in 1 2; do
+  python infer/test_api.py --model claude-haiku-4-5 --out runs/run$r --indices $(cat parity_indices.txt)
+  (cd runs/run$r && python ../../evaluate/SecureBleu.py | tail -2)   # "Average BLEU score"
+done
 
 # Harbor side (from the adapters repo root)
-cd src/securereviewer && uv run securereviewer --output-dir ../../datasets/securereviewer && cd ../..
-harbor run -c src/securereviewer/run_securereviewer.yaml -a <agent> -m "<model>"
+cd src/securereviewer && uv run securereviewer --split parity --output-dir ../../datasets/securereviewer-parity && cd ../..
+for r in 1 2; do
+  PYTHONPATH=src/securereviewer/parity harbor run -p datasets/securereviewer-parity \
+    --agent-import-path securereviewer_parity_agent:SecureReviewerSingleCallAgent \
+    -m anthropic/claude-haiku-4-5 -e daytona --env-file .env -n 4 --job-name parity-harbor-run$r
+done
 # SecureBLEU = mean reward x 100
 ```
 
@@ -185,6 +215,17 @@ harbor run -c src/securereviewer/run_securereviewer.yaml -a <agent> -m "<model>"
 - `Error State Management` has no type-specific keyword list in `SecureBleu.py` (its list is named
   `State Management`), so only the common keywords count for those 46 items. This is upstream behaviour
   and is kept.
+- **Parity runner (new code).** Upstream's `infer/test.py` only runs its fine-tuned local models, so the
+  parity fork adds `infer/test_api.py`. It reuses upstream's prompt, `parse_security_review` and
+  field mapping, and calls an API model instead of `model.generate`.
+- **Parity prompt.** The parity prompt is the task instruction: upstream's review prompt, the raw
+  unified diff in a fenced block (upstream feeds its models a `<add>/<del>/<keep>` encoding), and an
+  output-format section listing the 7 types and the `Security type:/Description:/Impact:/Advice:`
+  layout. The fine-tuned models learned that layout from training data, but a general chat model needs
+  to be told it, or the parser finds no sections. Both parity sides use this exact prompt.
+- **Parity model.** `claude-haiku-4-5` was used because `claude-haiku-5-5` rejects the `temperature`
+  parameter. Even at temperature 0, API outputs vary slightly from run to run, which is the spread seen
+  in the parity runs.
 - **nltk version**: upstream does not pin nltk; the image uses nltk 3.9.1 with the `wordnet`, `omw-1.4` and
   `averaged_perceptron_tagger_eng` data.
 

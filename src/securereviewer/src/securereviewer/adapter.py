@@ -9,7 +9,9 @@ SecureBLEU script (evaluate/SecureBleu.py), downloaded unmodified from the pinne
 from __future__ import annotations
 
 import json
+import random
 import shutil
+from collections import defaultdict
 import urllib.request
 from pathlib import Path
 
@@ -26,6 +28,28 @@ DATASET = "securereviewer"
 SKIPPED_TYPE = "No Issue"
 
 TEMPLATE_DIR = Path(__file__).parent / "task-template"
+
+# Parity subset: ~10% of the 261 tasks, stratified by security type in proportion to its
+# size, sampled with a fixed seed so the subset is reproducible.
+PARITY_SIZE = 25
+PARITY_SEED = 42
+
+
+def parity_subset(candidates: list[tuple[int, dict]], size: int = PARITY_SIZE, seed: int = PARITY_SEED) -> list[tuple[int, dict]]:
+    """Stratified, seeded sample of (index, item) pairs (proportional allocation, largest remainder)."""
+    by_type: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for idx, item in candidates:
+        by_type[item["security_type"]].append((idx, item))
+    total = len(candidates)
+    quotas = {t: size * len(v) / total for t, v in by_type.items()}
+    alloc = {t: int(q) for t, q in quotas.items()}
+    for t in sorted(quotas, key=lambda t: (alloc[t] - quotas[t], t))[: size - sum(alloc.values())]:
+        alloc[t] += 1
+    rng = random.Random(seed)
+    chosen: list[tuple[int, dict]] = []
+    for t in sorted(by_type):
+        chosen.extend(rng.sample(by_type[t], alloc[t]))
+    return sorted(chosen, key=lambda x: x[0])
 
 
 def task_id_for_index(idx: int) -> str:
@@ -57,6 +81,7 @@ class SecureReviewerAdapter:
         overwrite: bool = False,
         task_ids: list[str] | None = None,
         data_file: Path | None = None,
+        split: str = "full",
         **kwargs,
     ):
         self.output_dir = Path(output_dir)
@@ -64,11 +89,15 @@ class SecureReviewerAdapter:
         self.overwrite = overwrite
         self.task_ids = set(task_ids) if task_ids else None
         self.data_file = data_file
+        if split not in ("full", "parity"):
+            raise ValueError(f"Unknown split {split!r}; expected 'full' or 'parity'")
+        self.split = split
 
     def run(self) -> None:
         items = load_test_items(self.data_file)
         candidates = [(i, it) for i, it in enumerate(items) if it["security_type"] != SKIPPED_TYPE]
-        selected = [(i, it) for i, it in candidates if self.task_ids is None or task_id_for_index(i) in self.task_ids]
+        pool = parity_subset(candidates) if self.split == "parity" else candidates
+        selected = [(i, it) for i, it in pool if self.task_ids is None or task_id_for_index(i) in self.task_ids]
         if self.limit is not None:
             selected = selected[: self.limit]
 

@@ -47,6 +47,13 @@ def main() -> None:
         help="Local copy of SecureReviewer's dataset/test.jsonl. "
         "Default: download it from the pinned upstream commit.",
     )
+    parser.add_argument(
+        "--split",
+        choices=["full", "parity"],
+        default="full",
+        help="full: all 261 tasks (default). parity: the fixed, security-type-stratified "
+        "25-task subset used for parity experiments.",
+    )
     args = parser.parse_args()
 
     adapter = SecureReviewerAdapter(
@@ -55,6 +62,7 @@ def main() -> None:
         limit=args.limit,
         task_ids=args.task_ids,
         data_file=args.data_file,
+        split=args.split,
     )
 
     adapter.run()
