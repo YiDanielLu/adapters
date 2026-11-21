@@ -174,7 +174,7 @@ overlap. The API cost for all four runs was about $0.30.
 - Original benchmark: [SIMIAO515/SecureReviewer](https://github.com/SIMIAO515/SecureReviewer) (commit `86df98bf`)
 - Parity fork with the API runner: [YiDanielLu/SecureReviewer@harbor-parity](https://github.com/YiDanielLu/SecureReviewer/tree/harbor-parity)
 - Adapter PR: [harbor-framework/adapters#97](https://github.com/harbor-framework/adapters/pull/97)
-- Dataset PR: _pending_
+- Dataset PR: [harbor-framework/harbor-datasets#285](https://github.com/harbor-framework/harbor-datasets/pull/285)
 - Parity results (Hugging Face): [harborframework/parity-experiments#287](https://huggingface.co/datasets/harborframework/parity-experiments/discussions/287). The PR has no files yet because that dataset is over the Hub's file limit, so the full bundle is mirrored at [Daniellu88/securereviewer-parity-experiments](https://huggingface.co/datasets/Daniellu88/securereviewer-parity-experiments/tree/ce88c43725ff2da24920be8dc281e8923c3e497f/adapters/securereviewer)
 
 Reproduction. Put `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` and `DAYTONA_API_KEY` in a `.env` file.
