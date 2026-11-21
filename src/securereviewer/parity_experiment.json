@@ -11,7 +11,7 @@
     "original_parity_repo": "https://github.com/YiDanielLu/SecureReviewer/tree/harbor-parity",
     "adapter_pr": ["https://github.com/harbor-framework/adapters/pull/97"],
     "dataset_pr": [],
-    "parity_pr": [],
+    "parity_pr": ["https://huggingface.co/datasets/harborframework/parity-experiments/discussions/287"],
     "metrics": [
       {
         "benchmark_name": "SecureReviewer",
